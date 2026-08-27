@@ -3,6 +3,608 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام الفواتير - قمـــــة التكنولوجيا</title>
+    <!-- خط القاهرة الأنيق -->
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Cairo', sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; color: #333; }
+        .container { max-width: 900px; margin: auto; }
+        
+        /* لوحات التحكم */
+        .controls { text-align: center; margin-bottom: 20px; background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        .history-controls { margin-top: 15px; padding-top: 15px; border-top: 1px dashed #ccc; display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap;}
+        .backup-controls { margin-top: 15px; padding-top: 15px; border-top: 1px dashed #ccc; display: flex; justify-content: center; gap: 15px; }
+        
+        button { font-family: 'Cairo', sans-serif; padding: 10px 15px; margin: 0; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.3s; }
+        .btn-add { background-color: #28a745; color: white; margin-top: 10px; }
+        .btn-add:hover { background-color: #218838; }
+        .btn-clear { background-color: #dc3545; color: white; }
+        .btn-clear:hover { background-color: #c82333; }
+        .btn-export { background-color: #007bff; color: white; margin-right: 5px;}
+        .btn-export:hover { background-color: #0069d9; }
+        .btn-load { background-color: #17a2b8; color: white; padding: 8px 15px; }
+        .btn-load:hover { background-color: #138496; }
+        .btn-remove { background-color: #ff4d4d; color: white; padding: 5px 10px; font-size: 12px; }
+        .btn-remove:hover { background-color: #cc0000; }
+        .btn-add-term { background-color: #6c757d; color: white; padding: 5px 15px; font-size: 12px; margin-top: 10px; }
+        
+        .btn-backup { background-color: #6f42c1; color: white; }
+        .btn-backup:hover { background-color: #5a329f; }
+        .btn-restore { background-color: #fd7e14; color: white; }
+        .btn-restore:hover { background-color: #e06c0d; }
+
+        select.history-select { font-family: 'Cairo'; padding: 8px; border: 1px solid #ccc; border-radius: 4px; min-width: 250px; }
+        select.filter-select { font-family: 'Cairo'; padding: 8px; border: 1px solid #ccc; border-radius: 4px; background-color: #f8f9fa;}
+
+        #invoice { background: #fff; padding: 40px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        
+        /* الجدول */
+        table { width: 100%; border-collapse: collapse; margin-bottom: 5px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: center; vertical-align: middle; }
+        th { background-color: #2c3e50; color: white; -webkit-print-color-adjust: exact; print-color-adjust: exact;}
+        
+        input[type="number"] { width: 90%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: 'Cairo', sans-serif; text-align: center; box-sizing: border-box;}
+        textarea.desc-input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: 'Cairo', sans-serif; text-align: right; box-sizing: border-box; resize: none; overflow: hidden; min-height: 42px; line-height: 1.6; }
+        
+        /* الشروط */
+        .terms { margin-top: 30px; font-size: 14px; color: #444; }
+        .terms-list { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+        .term-item { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px;}
+        .term-item span.term-number { font-weight: bold; color: #7f8c8d; }
+        .term-item input { text-align: right; width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: 'Cairo', sans-serif; font-size: 14px;}
+
+        /* إعدادات الطباعة (إخفاء كل أدوات التحكم) */
+        @media print {
+            @page { size: A4; margin: 15mm; }
+            body { background: white; margin: 0; padding: 0; }
+            .container { padding: 0; max-width: 100%; }
+            #invoice { box-shadow: none; padding: 0; border: none; }
+            .controls, .no-print { display: none !important; }
+            input, select, textarea { border: none !important; background: transparent !important; outline: none; box-shadow: none; appearance: none; -webkit-appearance: none; }
+            .term-item { border: none !important; }
+            .term-item input { padding: 0; }
+            tr { page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    
+    <!-- لوحة التحكم الرئيسية -->
+    <div class="controls no-print">
+        <button class="btn-clear" onclick="clearAll()">تفريغ وبدء ملف جديد</button>
+        <button class="btn-export" onclick="exportPDF()">حفظ وتصدير كـ PDF</button>
+        
+        <!-- استرجاع وحذف السجلات -->
+        <div class="history-controls">
+            <label style="font-weight: bold;">سجل الملفات:</label>
+            <select id="historyFilter" class="filter-select" onchange="updateHistoryDropdown()">
+                <option value="ALL">الكل</option>
+                <option value="TP">عروض الأسعار (TP)</option>
+                <option value="INV">الفواتير (INV)</option>
+            </select>
+            
+            <select id="historySelect" class="history-select">
+                <option value="">-- اختر ملفاً لاسترجاعه --</option>
+            </select>
+            
+            <button class="btn-load" onclick="loadHistory()">استرجاع</button>
+            <button class="btn-remove" onclick="deleteHistory()" style="padding: 8px 15px; font-size: 14px;">حذف السجل</button>
+        </div>
+
+        <!-- النسخ الاحتياطي واستعادة البيانات -->
+        <div class="backup-controls">
+            <button class="btn-backup" onclick="backupData()">📥 أخذ نسخة احتياطية (Backup)</button>
+            <button class="btn-restore" onclick="document.getElementById('restoreInput').click()">📤 استعادة البيانات (Restore)</button>
+            <input type="file" id="restoreInput" style="display: none;" accept=".json" onchange="restoreData(event)">
+        </div>
+    </div>
+
+    <!-- الفاتورة / عرض السعر -->
+    <div id="invoice">
+        
+        <!-- رأس الصفحة (الشعار والبيانات الثابتة) -->
+        <div style="direction: ltr; text-align: left; font-family: sans-serif; margin-bottom: 25px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                <div style="font-size: 13px; line-height: 1.5; font-weight: bold; color: #222;">
+                    CR: 1026299<br>
+                    VATIN OM1100486240<br>
+                    CR NAME: BEN AMER PROJECTS<br>
+                    AL MAAMARI UNITED LLC
+                </div>
+                <div style="width: 220px; height: auto;">
+                    <!-- ضع كود Base64 الخاص بالشعار في الـ src هنا -->
+                    <img src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCABoARIDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD9U6KSsrxL4m0rwnpr6hrGoQaZYx/fnuHCqPb600m3ZK4m0ldmtRXmS/tI/Dd4BMvi/TTEeA/m4FMP7SHw33AL4w00n2lz/Kur6nif+fb+5nC8fhE7SqpfM9QorzWb9or4c20Ikm8YaZGp6F5cZqof2nvhdn/kd9L9MCWl9UxG3s39zKWNwzV1Ujb1PVaK8zP7R3w2Q/N4x00ZxgGWorn9pj4Y2khSXxrpcbDs0tP6pif+fcvuYljsK3ZVY/ej1GivMIv2lfhlcIzR+M9MZV6lZulami/G/wAC+IbhYNO8U6Zcyt0QXCgn6Z60nhcQld039zBY7CyfKqiv6nd0VDBcJcoHjkWSNhlWXnP41IevWuXZ2Z2JqSuh1FMOcZya5HxT8VvCnguYRa1r1np8h/5Zyy/N+Q5q4U51XanG78jOpWp0VzVZKK8zsaK8wuP2kPhraBDP4y0uPfyA02Ca0NA+O/gDxRdi10vxbpV3cHpGtyoJ+metbPC11vB/czGOMw8tqi+87+ioI3EnIJwQCPT86razrFnoWnz32oXUVlZwKWlmmcKqj1JNc6Tk7Lc6XLlV3saFFebr+0J8PGC7fF+mMWGR+/GCPXNRP+0h8M4mKSeNdKV16qJxxXR9VxFr+zf3M5VjcM3y+0V/U9Norzhf2hvh0SMeMdLJIyB53ao1/aL+G0rlI/GWluR1HndKf1Wv/I/uYfXcP/z8X3o9LorzOX9ov4b25AbxlpQJ7G4Ga77TNVtdYsYr2xuY7u0mUPHPC4ZWHqMVlOjVpJOpFq/dG1OvSq39nJOxeorE13xXpHhqHztW1O106LruuJlQn6A1laB8VvCPiq5NvpHiTTb+dTgxRXKlvypKlUlHnUXb0YOvTjLkclf1R2FFQF+B8xJPSsCz+IXhy+1+fRLfW7OfVYeJLRJQZEPPBH4VEYymrxV/0LlUhC3O7X28zpqKgY/LjJGO4rhNd+OvgLw1qEthqPizTbO+i4eCSflT71cKdSrpTjf0JqVqdKPNN2PQqK8yg/aJ+G9wvyeM9KZ16gXApT+0X8N43VJPGelpIxwqmfkmtfqtfdQf3Mw+u4bROor+p6ZRWLofibTPEkAm0zUrfUYSM77aVWx9QK2EOa5ndPlas/M6ozjNXi7rutR1FFFBYhr5J/by+GXjj4nab4esvCmm3GqWsUjvcRRSKq5wNpIYgHofyr63pjjC8dq7MJiZYStGtFXa7nFjMNHF0JUZtpPsfk3o/wCyp8VLC1ulvfB13HaFDJuWSMnIGexOK8l1HXnsZ7i3htkspo3Kvv8AmcEcEe2K/bLVgo0q6bbkrE5A/CvxR+I1gtn4v1SWLPlTXMrDHqZDkfyr9RyTNauZSn7WKVj8nzzJsPllSEqcm+a+/kdT4a/Z4+JnxG0WHWtI8O3WqafOTsnEiAHH+8RXSaL+x58VRdeZdeDblYo/mCmWL5j2H3q+8v2HsH9nXw6QOrSf+hV703AB7ivBxPEuJoVp0owjZOx9HhuGcPiKEKjm/eVz8qbn9lP4rzsZG8IXRLcgeZGcenRqq69+yH8Vb+1huY/CM7XS/KwWWP5h75avun9r34q6r8MfhoToV0LLWL+XyIrkkfuhj5mGe/SvJf2Hfiv4v8YeJdY0jVdUvNc02KHzjeXjbij5Awvsea7aeb46pg5Yzkior1PEnlOXYfHxwSqScn6aHz1pn7I/xQstGxL4VulZ2y6h4yT6DhvrXLeN/gx8T/BunvLd+D9S0vT0+9JAnmkD1JUk1+wAHJzUU8KTxlHVXQggqwyDXkx4qxF1zU1Y9/8A1QwyblGo7n5L/Av9rTxl8GdVht7i8m1XQVYLNp13IXZR6qTyp61+ovw3+IWkfE/wnZa/otws9ncIDjOWRu6t7iviz9uf9l+y0rT/APhO/C9ktsqzAX9pAmEyeA4UcDnOfwrA/wCCdfxQutF8d3/gq5mZbDUYGnt4nJASZOoA9xn8q6MxwmGzPBvMMMrOO6M8vxNfLMYsBiJXUtmforO+IiR12kivyO+J+o3ut+NNde7uhJq8l/MC9x84UBjhRnpgflX64SjEMnG7APX6V+O3xDuWk8e+I5STkajMcf8AAzS4RgpVartrZW+Zx8a1JRpUFF2u3cdoX7NnxN8dafHq+meHLnU7Ob5VuRIuGwfQsKy/GnwP8f8AwvtUvte8N3+mWwb5bnAKg/VScHng1+l/7GzxTfAPQWRdm5pM8dw1d78YYNGvPhn4ih17yl097KUP52MA7TgjPfPSt6nEleli3h+RNJ22NaGQUauBjiXNpuNz4x/Yk/ap1UeJLXwB4qvnvrK6XbY3lwx8yN/+eZJ69sV9ufEXwLp3xK8Jah4d1UyrY30ZSRoW2sK/If4e6Fc2nxI8LXOnyC5RNSgZHiO1kBfGMfT+dfs3G2IVY9cCvN4jw8MHioV6Hu8yuenw3i5Y3DToVXzcuh8H/Hz9jHw18KPg3rOvaXrGpyTaZAGijlddhG4DDcdOa4H9kT9lPw18ffCmqazreoX1tPaXnkotq6lHXGc9K+0P2twjfs/+Kg4BVrcLg+7CvMP+Cd+mJpXw71+BeSNQzuzkkFeBXRSzHFf2VUre0fMpKzOStl+Ejm1PDuGji2y0v/BPjwQJVf8AtfVhjsGUcenSmRf8E8/A1obkw6pqyNOQSwZMrjPTjjrX0P8AESx1vUvB2q23hy6FlrUsDLbXB/gf1/8Ar18U6l8LP2q5r6V4PE88an7uNSwD+GDXHhcZjsXFueKUbd2dmLwWAwk1COFcr9kd5N/wTd8CTszS63rMpbhi0i9K9k8VatpP7NHwUc2ayzW2l24gtEkbc8sh4UH8f61823Hwv/alk04BPE8y3bKFP/Ey4BHfoK3f2vNI8bWX7L/h5NYu/t+t280a6lcwg88dfr71U6M8ViKNGtiFUTfQzpVaeHw9aph8O6bS3Z5x8NvhB4p/a81288QeKPEV1Z6PBO0cohY4Zv7keeMDGOK634kfsCQ+B9NbxJ4B1rU11HTgbg2srfO+OTtYc9jx9K9V/YHvrKb9n7T4bd0FxDcSpMvRlOe4r6PRQwOcEnqB0pY7OMXhsZKlTdowduXS1jTAZPhcRg1UqK8pq/N2PAP2VPirr/xH+HF4fENpMl/pm6H7VMhRplAODg9xg5Pevga48TX3gn4qahqWl3EsepLqMlx9rwX24c/Ix/ukcfgK/Wy6toLHT7kQwRxLsYkRqFzxX5x/szeFrb4gftAeONK1a1L2N7BdQEMudp3khh6YxXXlGIoSlisS4WhZXSPNzjB17YXBqpzST0f5H3R8HPihYfFnwJba1aSqZ/L8u6gB+aKUDkGvzk+H3wp0/wCNX7TWu+HNZuLm2tZri6laWIjfw/HJr1TwPrmr/slfGubQtTEr+H9Um2vyQoU5Cy56Z9T9Kk/ZiuIbz9qjUJogJkl+1SJcqB8wLcCuzDYV4JYivh37rhzRfby+RzV8f/aDw9GuvfUuWS726nG/GX4F/Dv4P+PtK8P2tzrF/NKyNcutwqtHuOMAbTmvoe2/YA8C6tZaddvqmr7lVZFDsmTkZG75QTjPevEvjrE9n+1fJeX0LPDFqMCAsAMqcbW9x1r9FIGVreN48lSAQwPByBzXFmWOxWHw+HdKo05K9/M7cswOHxWLxSr01aLsl5H53fEHwF4y/Y/8a2Wt6Dqlxd6DO/Eg5WTnmNlHA47/AFr7u+E/xBtfif4I0zxDagKt1EDJGDnY44Zfzrxj9vTUrTTfghNJKVN79oQWw7lu/wCGKd+wFcSXXwNilZGjja6k8tGGABx09s1zY2X1/LI46ovfT5W+515dT/s7M54Ki/3bV7dj6Wooor48+4Cmv6U6mPQJ7MpasT/ZF2R18p/5V+Nvjm3jub3UYCC1yLyeROeg8w5H8q/ZPVgTpd0B1MLj9DX4t+P75rXx9qHlnKw3Lg+/z81+hcJ/HV+R+acZJuVG3n+h+m37D64/Z28PfKV+aU7SOnzV7yzYwK8V/Y+mS4+A2gSRY2NvIC9B8xr2p1yR9MV8bmS/2uqv7zPt8sbeBovyR8W/8FF2m/srwmw3i38+Qtt6Z2ik/wCCdBt/snitcL9r3xnk/NsxwPpzXsH7Xvw7l8b/AAfv5LSzF7qGmD7VDGBktj7yj8K+GP2afjSnwt+IMWooXWxuP3F9aMSGA9cHqRzX2mB/23Jp4al8S/HW58Dj3/Z2frE1Y/u5dfkfq0D1pe1c/wCEvGui+NtKivtG1GG+t5Bw0T5I9iM5zW4G474z16V+dyjKm+WSs0fpsKkKq54O6Z5j+05LDB8D/FrTuI1NoQrE4+bIx+tfA37JCTXnx58LOYUdo5GzL0YfIc89+tfX/wC27puuat8Kkg0qK5uLP7QpvEtI/Mcpg4yB265/CvIv2IPg/eSeKpvF99aXVnYWMJhtVuIvLEkjD5nGeScY57Z96+8yupSwuS1XOSvK+l9ddD83zalXxmeUY04u0ba9NNT7jmb90+PQ9PpX43ePefHHiL/r/n/9GGv2Omb905JwMeo9K/Gnx7rkc3xC16GCyXnUJlGXJyfMPJ9q04Ql+8rN+RXGkW4UeTWx90fCnx7qHw2/YqTX9LgW4v7VJTCrAkBixAJAr5H8e/HPx38R9Kt7DxHrlxPG6h5rRFMabz2KjjFfef7JNjp/iD9nbSrOe1jlspfNhlhcblf5ufwrpdO/Zh+GumX/ANsTwvZyT79/78Fxn6NWFDNMLgMVWdSlzS5nY0xGU43McJQVKryx5VdHyR+xn+z7qfifxfaeMdYspbTRdPPmW4mXabibPGAf4RjP5V+hgAUY7VHZ2kFlCkMESQxIAqoigKo9BU4UDsK+bzPMKuZV3VqfJH1mUZZTyuh7KG/Vnkf7VtjJqPwH8VxQwzXL/Ztwjt03vww529680/4J92M9v8NNYnmt5Iknvz5UsiFDIoX0PpX1NJDHKjI6K6MMFWGQRTbe1htIxHBEkKDoqKABUwx0o4KWDtu73LqZdGePhjr6xVjm/iR4tPgPwXq2vrZSaibCBphbRA7pMdhivku4/wCCh9zbRtK3giRYsgqpnbdg9Mjb9a+23jWRCrKGU8EEZBrLk8N6ORtbTLMj0MKY/lRg6+FpJ/WKPO+97DxuHxdaSdCtyLtY+OF/4KD35kBbwWTHjduE7dP++evSvpCFLX4/fCCNr6ym0yLWLMMYZxiSB+cHnriu2HhrSWGP7NtAOmBCmCPyq+ipEiRxqoVRgKuBge1VisVhnyyw1Lkad73uY4XBYmHPDF1VNS0tax+eWjy/En9jjxJqKnSpNT0CVifMWMtHcAE4cleh5rr7r/gopqNnYxXMXgoTq3DhJmBBH/Aa+3pbeG6QxzRJKh6q6gj8qqDw3pBDKdLs9pOSPs6YP6V6Ms1w2J/eYmgnPq07XPPp5LiMJ7uGxLjDonrY+LJv+CiF5caO0zeCmRZMoQJmJGeM/drF/YgtdT1X41a5rb280dlJC5YuCVUuSQM4Ffdh8LaOU2/2VZbf7v2dcfyq3aada2CFLa3igU8lYkCg/lSlmeGhh50cNQ5ebd3HHJ8VUxFOvia/NyO9rWPDf2rvgTF8XvA8txZRhdd05DJA6jl1GCU9+g4r5S/Yf0jWD8eXL6NPb2dnbyi4mmiKGOTpg5HQkHGK/SfaPQVXi0+1tmcw20UTSZLFEALfWsMPm9Wjg54Rq6e3kdOIySjXxkMYtJR/Fny9+19+zlqfxFNt4p8MgtrVooE9vH96VRggr7j/AArz/wACftneI/AegRaP4r8IX13NaxGOOUhkkbbx82Rz26V9xZAbpn6mq1zo9hdsXms4Zz/txqf5ilRzWMqCw+Jhzxjt0aM62TyjiXisJUcJy38z88fGM/xI/bO1q1gttGn0vw+GUKGVligGfmfLfebA/wA5r7w+FPw/sfhh4H0vw5YBfLsoVRmHV27t+Jrpre2ggQLFEkK/3UAA/KrAAFZY3MXi4RowgoU47JfqdWXZYsHOdapPnqSerfbshaKKK8c94KY9PqKZwgBJCj1NAnsVdWYrpd0wOCInPbnj3r8YfEmiN4j8Qaxc2gZbk3sy+S+SZDvbAXiv2nAWZOSHRhgjsa5a2+Ffg+2uRcQ+GtMjmV/MDLbIDuznd06+9fR5Rm0Msc+aLbdj5fOspnmqp+zko2ucJ+yF4b1Dwn8BvD1jqcJt7va0piY8qCeBXs3UA0RoqLtUAKOAB2p+K8LEVXXqzq/zO59Dh6XsKUaXZWIZIhImxgCCCCDyDXwd+1F+w1fTald+Kvh9CJfMYzXOkKdrbupaPt68V974FIUXHQV04LG1sBU56L9Tlx2Ao5hT9nWV7bH466Zf+L/hsqxXNzq3h/UQ5AaNnidR79mro9P+O/xQi86H/hMtVuI2BZJPOO4Y7H65/Sv1P1jwfomvLt1HSrO9B/57wh/51kJ8I/BcJ/d+GdMQ+otl/wAK+wXEeGnrWw6b+R8LLhfGxuqOJsvmfl/J+0R8SnJVvGGqMGGGBmP4ikl/aA+Jb6lYRx+LtUhhMYdhHLgHb61+njfCbwN5hRvDGk727G2TJ/Snt8I/BRKZ8L6XlBtXNovA9OlV/rDgkrLDafIiPDGOfvPFXfzPzD1P9oj4l3Gm3rx+LtVDxN5nEh+70PT8K8w0Fppru71e7Y3EzuQGk6ySMcknj3/Wv2J/4U/4H2MB4U0rkYI+yryPTpTB8HfAyrsHhTSwpO7b9kQDPr0rSlxNhMPJunRcb+hM+FMZUp8sq6l63OB/YuSMfALRPLVkBeQsjdm3HOPavcxweetZmi6ZpuiWUdjpdtBZWkedkFsqqq+uAK0AfmIJ59a+CxlZ1686qVuZ3P0XB0Hh8PCje/KrEvUUDFM6Dmkd9pGeFNc2qOp2SuyWk7ioBcKy5Vg3+6c0CdC+3zMv/dyM/lT1vawnKO1yVj1r4X/b5+LXjTwD4z0C28Na5faTbS2jNItqzAE7upx1r7lzk9z9a8w+MvxA+GvgCBL/AMbvpzSqpEcdxCs0xHoo5OOf1r1MsqKliIycOfyPMzSk6uGcVPk8z5p/Zy+K/jPxH+z38TtY1XXr271WxUm1uZpCXi+U42+leDfCH9ob4m6x8T/DVnfeLdWuLa4v445oHmyrKeoPHSvpWP8Ab1+Emiw3VhYeFrtbGYnzUhtEVJR6kEjNWNA/bL+BU88U50M6XcRuGjeTT0yGzjI25x1r62CrUnVqSwjalttofJVHRmqcI4rWO++p9gxMfKXJycCpASSfSqWl38GradbXtuxeC4jWWNsEZUjI6/WvCviB+2z8Ofhz4i1HRNQuryfUbF/LmhghB2t6ZJFfDUcNWxEnCnG7R9vUxFLDQU6krJn0JRXyD/w8m8AebtXSdXKnoQikn8MmvVfhb+1l8PPizcR2WmawLTUnHFje/u5T9Ox6V2VcrxtGPPOk7HNTzTBVZcsaiue01HKSFODjg02Ml06n8ac/GM5/CvLT7npvXRH5T/Gn9oX4k6L8VPE9jY+LdVtbW2vZEghjl+UKOgHFe1/H/wCLPjTQP2dfhprOma9e2uq3yj7VcwuQ8ny87vWvdfi38W/g38L7qc+IYtMudVYl3toLZZp2PHJGOvPevKNQ/b2+FF/bQWV34UvZ7CD/AFUc1mhVPTapOB+FffRrVMTGhOGE+DfbU+BlTpYeVaMsV8W2+mpzn7Bvxb8bePviLq9n4j1+/wBTs47MOiXLMV3Z688A196Kcj09q+XPhn+1z8G9Y1+ysdE086Nql+RAn+hLETnoMqa+oYSGXIOc187m7lPE87pezT6H0eT8kcPyKrzvuSUUUV4Z7oV4B+21qt7o/wAFbm4sLqa0n+0xKJIGKtgnkZFe/wBfO37dn/JC7r/r6i/nXp5YlLGUk+6PIzdtYCq07aM1P2NtTu9W+Bmk3N9cS3Vw0soaWZizHB9TXuKtk9eK8G/Ym/5IDo/p50v/AKFXmH7bvxC8SeEPG/hO30XWLvTIJkPmJbSMof5xycEV11cI8bmNWlTsldv7jzqOOWX5XSr1U5aJfefZWc//AFqTdkgdG9M1xmrf23ffC4toV0YdcfTlaCZl3kybAeh7k18Yat4W/ab0y3l1y41G+IgBkeFLtTgDqdg/lWGDy9YpyTqqNtNep147NPqajKNJzT106H6CLnvQcd6+Xf2Tf2m7/wCKEtz4Z8ShR4itELrNgJ5wBwV2juOPzr1r45/FaH4PfD+/1+QCa4UeXbQ5+/IRxn9TWFXA1qWIWFa957efmb0czw1bDPFxfurfy8j0UsAeoP401jtHX35r4D0CT49/G3QrzxfZeIm0jSFLSRKsjQggDJCgA56V3f7E3xT8XePPFPiXT/EutTapFZQKESVi21g5BI4FehWyeVKhOqqifLuuz7Hk0OIKdavTounJc+z6W7nK/GvxRq9l+2Ro9hb6pc29k09qGt0mYRsD1+UHHPevqj46a/4r8N/Dy7vfBlmb7XEdBHEsXmHG7nivkP45H/jNjR/U3Nn09MCvpj9rXxfq3gj4MajqmiXr2GoLNGqSxkbuW5HNeli6MZPAqMV7ySdzgwdapCOOlUk/dk7W7G58APEHi/xN4BS/8a2J0/XTPIrQNF5eEB4OK8s/ak/aLuNAdPAvgom+8VX+InNv8/khsDGR0Jyee2K3P2avFXib4i/s8XN9c6rLc+IJXuI4rmU5YMPuj86+WfAHh34ufDDxhfa5D4Jl1rWJpHBvr2AyEHJyynqOo/Klg8DB4utOo1eD0jsm/wDIjG4+pDB0adFPlmruVrtLqvU+tf2a/glq/wAPNH/tPxPqt5qfiK6XLxzzlo4Ac8AEnnnrXsevS3lrpF7JYqHu44HaFMZLOFOB+dfFzftjfE74f6lbDxv4NENhI+xiInjLD/ZJ4Jr6+8BeNNO+IfhbT/EOmMXs7uMOob7yHoVPuK8nMMNiaU/rVZJxl1W3oexleKwdWmsFQk1JK+vxep84eFPih8dLrwt4yudT0FodTtLdJNLia3H71i+GHHXgg12/gzxV481z4CeLb/xvZyaXrsMVysSrH5ZCBDtYf415T+1r8RPEnhj47eEdP0nWruysZ1hMtvBIwV8ygHIBx04r6g+KeD8LfE2eWOmSkn/tma7q6jCNCbhFe0s9OmqODD8054mmqkm6SaafmmfOH/BPrxDqmv6d4sOpX9zqBjnjCG5kZyowc9TXGeCfFetTfts32nvqt1LYDUJkFs0zeWFCZA25xiuj/wCCcZP9neMB/wBPEX8jXFeAgD+3deZ/6Cc//oFe3KlBYvGLl0UNDwY1an1DAvmd5Ts/+Cfafxf+IEPww+HWteJJhu+wwFlTP3nx8o/OvyK1LUvFPx8+JcZnmk1HW9XuRFDvJ2RAnIHsAPSv0c/b0gnn/Z11fystEs8LSqBnK7uc/pXw3+xdeWWnftEeGX1B0VDvSN5Dgbz0/H/ClkFONHA1cWo3nG/5Hfn1SVbHU8K5Wi7L8T3nTP8Agmn/AMSH7RqXixodSMRd4baEFFbHQE89q+KNU0/+yPEN7YGQy/Zrhod5GN21gP6V+416qmynwAT5bfyNfiP4xAXx1rG4EAajLnnGP3hru4ezHEY11fbu9tkcOf5fh8F7L2K36n7P/D7/AJEDw/x10+A/jsFfkr+1Ju/4X540I5P21up9h/hX6z/DuRZfAPhwowdTp8HzL0/1Yr8l/wBqU/8AF+/Go/6fW/lXl8MtfXa1+z/M9PiNN4Ohby/I94+Ff7AFp8SPh1pXiJ/FE9rPqUPmrEIQVTP8+leA/Gj4N+IP2fPG0dhd3JL48+01GD5QwHT6dK/Tr9lkY+AXg3A/5clwPTk18tf8FM7yxk1PwhbI8ZvY4pGeMYJCkjr7V0ZdmmJxGYywtV80bs58wyzD4fL44qkuWWh7n+xR8cbn4t/DY2urymTW9JYW87seZFxlW/KtX9sH42y/Bv4YSTae4XWdSJtrY55QEfM315FfOX/BM2GY674wkCuYhFEC55Bfn9cV0v8AwUw0e9m0DwrqUSM1lDM6SMq5CscYzXl1MDQ/tpUPstnqUsbX/sZ1l8SR8g/DD4aeJP2hPiEumWs5nv7nM1xeXDFgi55Jz+NfSPjr/gnhbeDvAeq62PFc1zc2Fs0zRi3UKxHoazf+Cbmqafa/EbxBaXDpHeXFmogLkDODyB78/qa+3fjof+LO+MBtK/8AEul4PbjpXrZrmmJw2YQwtF2jotjycryvD4nATxNZXlqz8m/gVkfGTwmpIJGox/lmv2jg+4PTAr8XfgUf+Lx+ER/1EI/5mv2ki/1a/QVx8Wa1qT62OzhS/s6va4+iiivhD70K8F/bV0G7134GaotnG00sLpKUUEnaDyfwr3qquoWsF9bvbXMSTW8qlJIpF3KynqCK6sLXeFrwrJfC0zixmHWKw86DduZNHxX+y3+1H4I+Hvwut9A16+ls7y2mdivlEgg15X+1H8ZdL+NPxD0WXw7b3F3Y6dGAZBGxd/mDEgD0A/Wvr3xz+z18LdB0XVNcu/CNtItvC88kcWRuwCcAV5J8Pfi18KvD3gvXfF+i+AHtBZOkLq8e923ccEjI6H86+yw2IwrqyxlClJyd+qtqfAYvDYyNGGAxNaKirdHrbU7zwt+2n8MoPD+nw3Oo3FrLFCkbRPbtlSBgj9KuX37bvwtggdl1K6uSFJ2Jbnn25qr8Nfhp8Kfjr4aHiyPwVDZC4kZTEwKHOeTgYrh/F0nwb+F/xXsvCD/D1Lq+mkiRbhlLxjc3B54rgWHwNSrKn7OftFq1dHpPFZjSoQnGrD2ctE7O5893XxPtPC/x7/4WD4WsL2DRHuhIVmgZBJn76+2a+nP2jp/+Gg/2b08ReGoJ5ILedbryZUKnCj5uOpxn8a+hNS+GvhbWvD50m80Kwl00ji3MChB7jjr71raN4f03w5oltpWn2sdtp0EflRQIPlC+gqMRm1KdSlWpwanB733SN8LklalCtQlVvTmr/Nnx9+zZ+0Z4cT4WReAtQW4ttcjgmhhRYiRKpUndnsa8y/ZO+MHhz4SeM/Fl54jvGtY7xTHEyJuJIkY4/lXr37RHjTwH8EvE9yNN8FqfFt5bMYbuKLZEN4I3Db3+lcz+yF+zVZ+MdI1bxB400Xzbe5cLZxXAI4OSzjv3HJr3FUwf1avXmmo1LO11e/kfNcmOWLoYWlNSqUrp6aJW0ueT+OPjDpfjD9o6HxxFBcDRLK4hdnWIltkYxkkV65+1T+1L4Q+JHwx/4Rvw9NNeXN3PGXcxkLGBz9a+qNC+BfgTw1pt1p9j4asIra64lQw7i49CT+NZOmfsx/DTStSS+t/C9mtwjblJUlc/Q8dq8yWbZfKdOcoS/dqy1R68MkzOnCpCNVWqb6M+df2Wv2lPBfwu+GMPh7xHd3NhqEVw8jKYGIO70/L9a9kb9tT4VFSBrUuT1/0Zq7LxN+zv8P8AxfqH23U/DNlNd4wZETZkds4xmsc/smfC8/8AMq2uPq3+NcVWvleJqyrVIyu+zW530MLm2EpRw9NxcVtoz51/au/aW8HfFLwDH4a8NrLqV/LcxyLMYMBMHtkZ5yenpWr+zJ+0z4F+GHwqsfD+tahPaX1tLI0sckROMseB7cV9F+Gv2c/h54R1GO+07wxZQ3UZykhQuVPqM9KTxL+zn8PPFepPqGoeGLOW6kzvkVChbPqBWssflzw6wig+Ra763MFlmaLEPGe0iptWtbSx8I/Hv4xaf8V/jZpPiDRrW4uNJ0kRZdYyWdEbczYH4V9KeMP2xvhx4i+HmsWNvqUyXl1YywJFLCQdxjIr2jwr8DfA/goTjSfD1lbtcJskcx72dfQk9uawr/8AZZ+GV/dPcSeFbTe7bmCAqCfoK0qZjl1Z0lKErQtbVExyvNKTrVFUjzVd9H2seC/8E4jnTPGJ7CeLB9flNcb4C/5PuvP+wnP/AOgV9reAvhR4Z+Gcd0nh3TY9NS5IabyyTvx0zn0zVGw+B3g3TvGz+LbfSIk153Mhu93JY9T9azqZvSliMRVitKisvI2jklZUMNSlJfu5Xfn6Gz8RPBNn8Q/BWqeHb4DyL6Bo9xGdpxw34GvyI+J/wo8V/Avxo1reQT2strN5llfxZHmKD8rg+vPNfs6oB7cVj+J/B2i+MLFrPWtLtdTtm6x3MIcfrXHlWbTy6UoSV4S3R6ma5VHMUpxdprZnwB+z3+1z8VPH/jTQfBoey1FZXVJ7qWIb1iH3i2B6dzXjf7Vnwj1T4W/FbWFuLWQaRfztc2l0qHYysckZHcE8/UV+nfgv4DeB/h5rcmr+HtAttMv3jMZmi/unt7fhXReLPA+heOdONlr+l2uqWrfwXEYcA+2elerSz2hhcX7ahTtBrVadzy6uR1sRhfZVp3mndM/MLwD+3J8RfAHhm20SFrK/t7VNkLXUbMwUYwM9+PWvFvHfi2++IPi3U/EGoIqXepTGWQRKQoyO2fpX6ut+x98JnJP/AAiVqMnPBbH5Uwfsc/CQY/4pG0GOn3v8a76Of5dh5urSpNN77dzz6uQ5hXgqdWqmltufCHgr9uLx94F8G6f4d0yDTktrOHyYpWhLuAO+On515dreveMPjv42W5vBd67rd0RHGiJuCjsAOijk1+oB/Y7+EuB/xSVrgdOWrufBPwh8H/D1caB4esdOcDHmQxAP+fXvULP8Dh5SrYaj7772L/sDG14xpYir7iPyy8B/Fj4i/sq65f6ZBbHS55WDXFpfw5DHnByR79q6D4hftreL/if4XudA1/S9IuLGfn/VHerdmBPfnqK/TDxv8JvCfxEiCeINAstTx0eeMFh9D+FcKf2PPhOc58JWoB92/wAazjnmBqS9tXoe/wB0aSyPG04+yo1vc7M/Jnw34j1Lwjrdtquk3kun6jbndHLAx3D8e/Svd9U/bn+Imu+Ebzw9qgsbqC6gNvLM0W2Qgjrx3r7u/wCGOvhLjH/CJWmPTLf40D9jv4TAYHhK1A9i3+NdVXiDLsRKMqtFtrroc1LIMwoRlGnVsn01PzC+BCsfjH4QwG41CPJPfk1+00JzGv0FeRaP+yl8L/D+rWmpWPhe2t7y2kEkUqk5Ujoa9djGAfTt9K+aznMqWYzhKmmrX3Ppcmy2pl0Jqo0+aw+iiivnj6IKZICSMHFFFAFa7tob63ktriJZreRSrxuMhgeoIrBj+G/heCwnsY/D+npZzkNJAtuoRyOhIxjjNFFaQlKn8DaOedKFR3nFP1RqaVoWn6BYrZ6bZRWNsp3CG3QKufoKz9S8A+G9X1pNVvdGsrnUlwVuJYVaQEdOcZ4ooqVUnD34yd3u76hGjTqLklFWWysdCowRg8DjFJIpLAjFFFZpWSRsvfWpz2v+APD/AIm1O0v9T0i01C7tRiGSeMMYwfTIroLe3jto1jiRYo0ACqowAPQUUVbqTlFJvYmNOCk5KKu+vUl2jjgUEDI4FFFTZGgYB64o2D0FFFFhbBgYxgUhIGOlFFNIpIU/QUZxRRQyFuIRz0FHAPpRRQOIo60pH0oooB6CcelDH6GiihIlsPwFAoooZSFx7CjHsKKKQAQPpRj8aKKdluK+tgx7CjHsKKKQxPyoA5J4zRRST1sOw6iiiqA//9k="" alt="Logo" style="width: 100%; height: auto;">
+                </div>
+            </div>
+            
+            <hr style="border: none; border-top: 2px solid #333; margin: 15px 0;">
+            
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; font-size: 15px;">
+                <div style="flex: 1; display: flex; flex-direction: column; gap: 5px;">
+                    <textarea id="customerName" placeholder="Cash Customer-99869000" oninput="autoGrow(this)" style="text-align: left; font-size: 15px; margin: 0; padding: 0; border: none; font-weight: bold; width: 100%; min-height: 25px; resize: none; overflow: hidden; background: transparent; font-family: sans-serif;"></textarea>
+                    <input type="text" value="Buraimi, Oman" style="text-align: left; font-size: 14px; border: none; padding: 0; margin: 0; font-family: sans-serif; background: transparent; font-weight: normal; width: 100%;">
+                </div>
+                
+                <div style="text-align: right; display: flex; flex-direction: column; gap: 5px; align-items: flex-end; color: #222;">
+                    <input type="date" id="docDate" style="text-align: right; border: none; padding: 0; font-family: sans-serif; font-size: 14px; margin: 0; width: 130px; font-weight: normal; background: transparent; outline: none;">
+                    
+                    <div style="display: flex; gap: 5px; align-items: center; font-size: 14px; font-family: sans-serif;">
+                        <span style="font-weight: normal;">Ref:</span>
+                        <!-- القائمة المنسدلة الوحيدة لتحديد نوع الملف -->
+                        <select id="docType" class="no-print" onchange="updateReference()" style="padding: 0; border: 1px solid #ccc; font-size: 12px; outline: none;">
+                            <option value="TP">TP (Quotation)</option>
+                            <option value="INV">INV (Invoice)</option>
+                        </select>
+                        <span id="refPrintDisplay" style="font-weight: normal;"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- العنوان الرئيسي الديناميكي الذي يتغير حسب الاختيار -->
+        <div id="mainDocTitle" style="text-align: center; font-size: 22px; font-weight: bold; margin: 15px 0 25px 0; color: #2c3e50; font-family: 'Cairo', sans-serif; text-decoration: underline;">
+            عرض أسعار (Quotation)
+        </div>
+<div class="info-row">
+                <span>إلى</span>
+                <textarea id="customerName" class="customer-input" placeholder="اسم العميل أو الجهة الموجه لها الملف" oninput="autoGrow(this)"></textarea>
+                <span>To</span>
+            </div>
+
+
+        <!-- جدول البنود -->
+        <table id="invoiceTable">
+            <thead>
+                <tr>
+                    <th style="width: 5%;">الرقم</th>
+                    <th style="width: 40%;">التفاصيل (Description)</th>
+                    <th style="width: 15%;">الكمية (Qty)</th>
+                    <th style="width: 15%;">السعر (Rate)</th>
+                    <th style="width: 15%;">المجموع (Amount)</th>
+                    <th style="width: 10%;" class="no-print">إجراء</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+            </tbody>
+        </table>
+        
+        <div style="text-align: right;" class="no-print">
+            <button class="btn-add" onclick="addRow()">+ إضافة بند جديد</button>
+        </div>
+
+        <!-- المجاميع -->
+        <div style="width: 40%; margin-right: auto; margin-left: 0; margin-top: 20px;">
+            <table style="width: 100%; border-collapse: collapse; background-color: #ececec; border: 1px solid #999; border-radius: 4px; direction: ltr;">
+                <tr>
+                    <th style="text-align: left; padding: 8px 12px; color: black; font-weight: bold; background: transparent; border-bottom: 1px solid #aaa; width: 60%; font-family: sans-serif;">Total Price (OMR)</th>
+                    <td id="subTotal" style="text-align: right; padding: 8px 12px; color: black; font-weight: bold; border-bottom: 1px solid #aaa; font-family: sans-serif;">0.000</td>
+                </tr>
+                <tr>
+                    <th style="text-align: left; padding: 8px 12px; color: black; font-weight: bold; background: transparent; border-bottom: 1px solid #aaa; font-family: sans-serif;">Vat 5%</th>
+                    <td id="vatAmount" style="text-align: right; padding: 8px 12px; color: black; font-weight: bold; border-bottom: 1px solid #aaa; font-family: sans-serif;">0.000</td>
+                </tr>
+                <tr>
+                    <th style="text-align: left; padding: 10px 12px; color: black; font-weight: bold; background: transparent; font-family: sans-serif; font-size: 16px;">Grand Price (OMR)</th>
+                    <td id="grandTotal" style="text-align: right; padding: 10px 12px; color: black; font-weight: bold; font-family: sans-serif; font-size: 16px;">0.000</td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- الشروط والأحكام -->
+        <div class="terms">
+            <strong>الشروط والأحكام:</strong>
+            <div class="terms-list" id="termsContainer"></div>
+            <button id="addTermBtn" class="btn-add-term no-print" onclick="addTerm()">+ إضافة شرط جديد</button>
+<!-- حقوق التصميم -->
+        <!-- حقوق التصميم -->
+        <div class="no-print" style="text-align: center; font-size: 13px; color: #7f8c8d; margin-top: 50px; border-top: 1px solid #eee; padding-top: 15px; font-family: 'Cairo', sans-serif;">
+            جميع الحقوق محفوظة سيف عامر المعمري
+        </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let rowCount = 0;
+    let sequenceNumber = 1;
+    let isEditingOld = false; 
+    let editingOldNumber = null;
+
+    window.onload = function() {
+        document.getElementById('docDate').valueAsDate = new Date();
+        
+        if(localStorage.getItem('wahatAlMajidSeq')) {
+            sequenceNumber = parseInt(localStorage.getItem('wahatAlMajidSeq'));
+        } else {
+            localStorage.setItem('wahatAlMajidSeq', sequenceNumber);
+        }
+        
+        updateHistoryDropdown();
+        updateReference();
+        
+        addTerm("الأسعار صالحة لمدة شهر واحد من تاريخ العرض.");
+        addTerm("الرجوع إلينا للتأكيد قبل الموافقة على الطلب.");
+        addRow();
+    };
+
+    // تحديث رقم المرجع والعنوان الرئيسي ديناميكياً
+    function updateReference() {
+        const typeSelect = document.getElementById('docType');
+        const typeVal = typeSelect.value;
+        const currentYear = new Date().getFullYear();
+        const docNum = isEditingOld ? editingOldNumber : sequenceNumber;
+        
+        const formattedNum = docNum.toString().padStart(3, '0');
+        document.getElementById('refPrintDisplay').innerText = `${typeVal}${currentYear}/${formattedNum}`;
+
+        // تحديث العنوان الرئيسي حسب الاختيار
+        const titleElement = document.getElementById('mainDocTitle');
+        if(titleElement) {
+            titleElement.innerText = typeVal === 'INV' ? 'فاتورة (Invoice)' : 'عرض أسعار (Quotation)';
+        }
+    }
+
+    function incrementSequence() {
+        if (!isEditingOld) {
+            sequenceNumber++;
+            localStorage.setItem('wahatAlMajidSeq', sequenceNumber);
+            updateReference();
+        }
+    }
+
+    function addRow(descVal = "", qtyVal = 1, rateVal = "0.000") {
+        rowCount++;
+        const tableBody = document.getElementById('tableBody');
+        const tr = document.createElement('tr');
+        
+        tr.innerHTML = `
+            <td class="row-num">${rowCount}</td>
+            <td><textarea class="desc-input" maxlength="500" placeholder="وصف البند" oninput="autoGrow(this)">${descVal}</textarea></td>
+            <td><input type="number" class="qty-input" min="1" value="${qtyVal}" oninput="calculateRow(this)"></td>
+            <td><input type="number" class="rate-input" min="0" step="0.001" value="${rateVal}" oninput="calculateRow(this)"></td>
+            <td class="amount-cell">0.000</td>
+            <td class="no-print"><button class="btn-remove" onclick="removeRow(this)">حذف</button></td>
+        `;
+        tableBody.appendChild(tr);
+        updateRowNumbers();
+        calculateRow(tr.querySelector('.qty-input'));
+        autoGrow(tr.querySelector('.desc-input'));
+    }
+
+    function autoGrow(element) {
+        element.style.height = "5px";
+        element.style.height = (element.scrollHeight) + "px";
+    }
+
+    function calculateRow(element) {
+        const row = element.closest('tr');
+        const qty = parseFloat(row.querySelector('.qty-input').value) || 0;
+        const rate = parseFloat(row.querySelector('.rate-input').value) || 0;
+        const amount = qty * rate;
+        
+        row.querySelector('.amount-cell').innerText = amount.toFixed(3);
+        calculateGrandTotal();
+    }
+
+    function calculateGrandTotal() {
+        let subtotal = 0;
+        const amounts = document.querySelectorAll('.amount-cell');
+        amounts.forEach(cell => {
+            subtotal += parseFloat(cell.innerText) || 0;
+        });
+        
+        let vat = subtotal * 0.05;
+        let grandTotal = subtotal + vat;
+
+        document.getElementById('subTotal').innerText = subtotal.toFixed(3);
+        document.getElementById('vatAmount').innerText = vat.toFixed(3);
+        document.getElementById('grandTotal').innerText = grandTotal.toFixed(3);
+    }
+
+    function removeRow(btn) {
+        btn.closest('tr').remove();
+        updateRowNumbers();
+        calculateGrandTotal();
+    }
+
+    function updateRowNumbers() {
+        const rows = document.querySelectorAll('#tableBody tr');
+        rows.forEach((row, index) => {
+            row.querySelector('.row-num').innerText = index + 1;
+        });
+        rowCount = rows.length;
+    }
+
+    function addTerm(val) {
+        const textValue = typeof val === 'string' ? val : "";
+        const container = document.getElementById('termsContainer');
+        const termsCount = container.querySelectorAll('.term-item').length;
+        
+        if (termsCount >= 5) return;
+
+        const div = document.createElement('div');
+        div.className = 'term-item';
+        div.innerHTML = `
+            <span class="term-number no-print">-</span>
+            <input type="text" placeholder="أدخل الشرط هنا..." value="${textValue}">
+            <button class="btn-remove no-print" onclick="this.parentElement.remove(); updateTermsButton();">حذف</button>
+        `;
+        container.appendChild(div);
+        updateTermsButton();
+    }
+
+    function updateTermsButton() {
+        const termsCount = document.querySelectorAll('.term-item').length;
+        document.getElementById('addTermBtn').style.display = termsCount >= 5 ? 'none' : 'inline-block';
+    }
+
+    function clearAll() {
+        if(confirm("هل أنت متأكد من تفريغ الحقول وبدء ملف جديد كلياً؟")) {
+            isEditingOld = false; 
+            document.getElementById('tableBody').innerHTML = '';
+            document.getElementById('docDate').valueAsDate = new Date();
+            document.getElementById('customerName').value = '';
+            document.getElementById('customerName').style.height = 'auto'; 
+            document.getElementById('historySelect').value = '';
+            document.getElementById('docSubject').value = 'Sub: Quotation for Security Camera & Sliding Door Installation';
+            
+            const termsContainer = document.getElementById('termsContainer');
+            termsContainer.innerHTML = '';
+            addTerm("الأسعار صالحة لمدة شهر واحد من تاريخ العرض.");
+            addTerm("الرجوع إلينا للتأكيد قبل الموافقة على الطلب.");
+            
+            rowCount = 0;
+            addRow();
+            updateReference();
+            calculateGrandTotal();
+        }
+    }
+
+    // إدارة البيانات والحفظ المحلي
+    function saveInvoiceData() {
+        const docTypeVal = document.getElementById('docType').value;
+        const docDate = document.getElementById('docDate').value;
+        const customerName = document.getElementById('customerName').value;
+        const docSubject = document.getElementById('docSubject').value;
+        const docNumber = isEditingOld ? editingOldNumber : sequenceNumber;
+        
+        const typeEng = docTypeVal === 'INV' ? 'Invoice' : 'Quotation';
+        const docId = `${docNumber}-${typeEng}`;
+
+        const items = [];
+        document.querySelectorAll('#tableBody tr').forEach(row => {
+            const desc = row.querySelector('.desc-input').value;
+            const qty = row.querySelector('.qty-input').value;
+            const rate = row.querySelector('.rate-input').value;
+            if(desc || rate > 0) items.push({ desc, qty, rate });
+        });
+
+        const terms = [];
+        document.querySelectorAll('.term-item input').forEach(input => {
+            if(input.value.trim() !== "") terms.push(input.value);
+        });
+
+        const invoiceData = {
+            id: docId,
+            number: docNumber,
+            type: docTypeVal,
+            date: docDate,
+            customer: customerName,
+            subject: docSubject,
+            items: items,
+            terms: terms,
+            timestamp: new Date().getTime()
+        };
+
+        let history = JSON.parse(localStorage.getItem('wahatAlMajidHistory')) || [];
+        const existingIndex = history.findIndex(inv => inv.id === docId);
+        if (existingIndex > -1) {
+            history[existingIndex] = invoiceData;
+        } else {
+            history.push(invoiceData);
+        }
+        
+        localStorage.setItem('wahatAlMajidHistory', JSON.stringify(history));
+        updateHistoryDropdown();
+    }
+
+    function updateHistoryDropdown() {
+        const filter = document.getElementById('historyFilter').value;
+        const select = document.getElementById('historySelect');
+        select.innerHTML = '<option value="">-- اختر ملفاً لاسترجاعه --</option>';
+        
+        let history = JSON.parse(localStorage.getItem('wahatAlMajidHistory')) || [];
+        history.sort((a, b) => b.timestamp - a.timestamp);
+        
+        history.forEach(item => {
+            // تطبيق الفلتر
+            if (filter !== 'ALL' && item.type !== filter) return;
+
+            const customerStr = item.customer ? ` | ${item.customer.substring(0,20)}` : '';
+            const typeName = item.type === 'INV' ? 'فاتورة' : 'عرض سعر';
+            const option = document.createElement('option');
+            option.value = item.id; 
+            option.innerText = `${item.number} - ${typeName}${customerStr}`;
+            select.appendChild(option);
+        });
+    }
+
+    function loadHistory() {
+        const select = document.getElementById('historySelect');
+        const selectedId = select.value;
+        if (!selectedId) return alert("الرجاء اختيار ملف من القائمة أولاً.");
+
+        let history = JSON.parse(localStorage.getItem('wahatAlMajidHistory')) || [];
+        const data = history.find(inv => inv.id === selectedId);
+        
+        if (data) {
+            isEditingOld = true;
+            editingOldNumber = data.number;
+
+            document.getElementById('docType').value = data.type;
+            document.getElementById('docDate').value = data.date;
+            document.getElementById('customerName').value = data.customer;
+            if(data.subject) document.getElementById('docSubject').value = data.subject;
+            
+            autoGrow(document.getElementById('customerName'));
+
+            document.getElementById('tableBody').innerHTML = '';
+            rowCount = 0;
+            if(data.items && data.items.length > 0) {
+                data.items.forEach(item => addRow(item.desc, item.qty, item.rate));
+            } else {
+                addRow();
+            }
+
+            document.getElementById('termsContainer').innerHTML = '';
+            if(data.terms && data.terms.length > 0) {
+                data.terms.forEach(term => addTerm(term));
+            } else {
+                addTerm(); 
+            }
+
+            updateReference();
+            alert("تم استرجاع الملف بنجاح!");
+        }
+    }
+
+    // حذف سجل معين
+    function deleteHistory() {
+        const select = document.getElementById('historySelect');
+        const selectedId = select.value;
+        if (!selectedId) return alert("الرجاء اختيار ملف من القائمة لحذفه.");
+
+        if(confirm("هل أنت متأكد أنك تريد حذف هذا السجل نهائياً؟ لا يمكن التراجع عن هذا الإجراء.")) {
+            let history = JSON.parse(localStorage.getItem('wahatAlMajidHistory')) || [];
+            history = history.filter(item => item.id !== selectedId);
+            localStorage.setItem('wahatAlMajidHistory', JSON.stringify(history));
+            updateHistoryDropdown();
+            alert("تم الحذف بنجاح.");
+            
+            // إذا كان الملف المحذوف هو المفتوح حالياً، قم بتفريغ الشاشة
+            if(isEditingOld && `${editingOldNumber}-${document.getElementById('docType').value === 'INV' ? 'Invoice' : 'Quotation'}` === selectedId) {
+                clearAll();
+            }
+        }
+    }
+
+    // النسخ الاحتياطي (تحميل ملف JSON)
+    function backupData() {
+        const data = {
+            history: localStorage.getItem('wahatAlMajidHistory') || "[]",
+            seq: localStorage.getItem('wahatAlMajidSeq') || "1"
+        };
+        const blob = new Blob([JSON.stringify(data)], {type: 'application/json'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `Invoice_Backup_${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+    }
+
+    // استعادة البيانات من ملف JSON
+    function restoreData(event) {
+        const file = event.target.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const data = JSON.parse(e.target.result);
+                if(data.history) localStorage.setItem('wahatAlMajidHistory', data.history);
+                if(data.seq) {
+                    localStorage.setItem('wahatAlMajidSeq', data.seq);
+                    sequenceNumber = parseInt(data.seq) || 1;
+                }
+                updateHistoryDropdown();
+                updateReference();
+                alert("تم استعادة البيانات بنجاح!");
+            } catch(err) {
+                alert("ملف النسخة الاحتياطية غير صالح أو تالف.");
+            }
+            // إعادة ضبط حقل الإدخال ليقبل نفس الملف مرة أخرى إذا لزم الأمر
+            event.target.value = '';
+        };
+        reader.readAsText(file);
+    }
+
+    // تصدير PDF والطباعة
+    function exportPDF() {
+        // تأكيد التحديث قبل الطباعة
+        updateReference();
+        saveInvoiceData();
+
+        const textareas = document.querySelectorAll('textarea');
+        const tempElements = [];
+
+        textareas.forEach(ta => {
+            const div = document.createElement('div');
+            div.innerHTML = ta.value.replace(/\n/g, '<br>');
+            div.className = 'temp-print-element';
+            div.style.fontFamily = "'Cairo', sans-serif";
+            div.style.wordWrap = 'break-word';
+            div.style.lineHeight = '1.6';
+            
+            if (ta.id === 'customerName') {
+                div.style.flex = "1";
+                div.style.textAlign = "left";
+                div.style.fontSize = "15px";
+                div.style.fontWeight = "bold";
+                div.style.color = "#222";
+                div.style.fontFamily = "sans-serif";
+            } else {
+                div.style.textAlign = 'right';
+                div.style.padding = '8px';
+            }
+
+            ta.style.display = 'none'; 
+            ta.parentNode.insertBefore(div, ta); 
+            tempElements.push({ original: ta, temp: div });
+        });
+
+        const termItems = document.querySelectorAll('.term-item');
+        termItems.forEach(item => {
+            const input = item.querySelector('input');
+            const numberSpan = item.querySelector('.term-number');
+            if(input.value.trim() !== '') {
+                numberSpan.innerText = '-'; 
+                numberSpan.classList.remove('no-print'); 
+                numberSpan.classList.add('temp-dash');
+            }
+        });
+
+        const typeSelect = document.getElementById('docType');
+        const typeName = typeSelect.value === 'INV' ? 'Invoice' : 'Quotation';
+        const docNumToPrint = isEditingOld ? editingOldNumber : sequenceNumber;
+        
+        const originalTitle = document.title;
+        document.title = `${typeName}_${docNumToPrint}`; 
+
+        setTimeout(() => {
+            window.print();
+            
+            document.title = originalTitle;
+            tempElements.forEach(item => {
+                item.temp.remove();
+                item.original.style.display = '';
+            });
+
+            document.querySelectorAll('.temp-dash').forEach(span => {
+                span.classList.add('no-print');
+                span.classList.remove('temp-dash');
+            });
+            
+            incrementSequence();
+        }, 300);
+    }
+</script>
+
+</body>
+</html><!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>نظام الفواتير -قمة التكنولوجيا</title>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
     <style>
